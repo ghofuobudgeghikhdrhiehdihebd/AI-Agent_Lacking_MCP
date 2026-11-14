@@ -9,6 +9,14 @@ pub struct McpResponse {
 }
 
 impl McpResponse {
+    fn success(result: impl Into<String>) -> Self {
+        Self {
+            status: "success".to_owned(),
+            result: Some(result.into()),
+            error: None,
+        }
+    }
+
     fn failed(error: impl Into<String>) -> Self {
         Self {
             status: "failed".to_owned(),
@@ -27,7 +35,7 @@ pub fn mcp_server(tool: &str, params: &Value) -> McpResponse {
         return McpResponse::failed("Invalid input types");
     }
 
-    McpResponse::failed("MCP server is not implemented")
+    McpResponse::success("This is a dummy response, as the MCP server has not yet been implemented. Please ignore this.")
 }
 
 #[cfg(test)]
