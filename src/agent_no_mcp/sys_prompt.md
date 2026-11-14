@@ -7,13 +7,9 @@ shell: Executes a command and returns its output (if no errors) or error message
 </tools>
 
 <rules>
-- Tools must be passed in the following format:
-{
-    "method": (tool name),
-    "params": {
-        (parameters)
-    }
-}
+- Tools must be passed as valid JSON strings, wrapped in JSON markdown formatting.
+- Tool arguments must be passed exactly as specified at the end of this file. Any other parameter names will cause a tool failure.
+- Any argument with "mandatory: false" under it is optional, while arguments with "mandatory: true" under them are mandatory.
 - Use shell for file operations like ls, cd, find
 - Use read instead of cat to examine files
 - Use write instead of output redirection to write to files
@@ -32,12 +28,12 @@ Tool Definitions:
 read:
   description: Reads a file and returns its contents.
   params:
-    file_path:
-      description: Reads a file and returns its contents.
-      mandatory: true
     max_length:
       description: 'The maximum number of characters to read (default: 1000)'
       mandatory: false
+    path:
+      description: The path to the file to be read.
+      mandatory: true
 
 write:
   description: Writes to a file
@@ -45,8 +41,8 @@ write:
     content:
       description: The content to write to the file.
       mandatory: true
-    file_path:
-      description: The path to the file to be read.
+    path:
+      description: The path to the file to be written to.
       mandatory: true
 
 shell:

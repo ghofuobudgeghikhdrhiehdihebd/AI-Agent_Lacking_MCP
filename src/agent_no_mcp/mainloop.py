@@ -10,14 +10,21 @@ def main():
     if (init_res.text is None):
         return ""
     text, tools = split_tools_from_text(init_res.text)
-    print(text)
-    print(tools)
-    # Send init prompt to LLM and get text & tools
-    # If no tools, send text to user and exit
-    # If tools, hold text, send tools to MCP, get response, send it as context to LLM, repeat until done
+    print(f"Response (text): {text}\nResponse (tools): {tools}\n")
 
-    done = not tools
-
-    while not done:
-        # Main agentic loop
-        
+    while tools:
+        next_tool = tools.pop(0)
+        tool_name = next_tool.get("tool", "INVALID_TOOL")
+        tool_params = next_tool.get("params", {})
+        mcp_res = mcp_server(tool_name, tool_params)
+        if (mcp_res.get("status") == "success"):
+            context.append(f"Tool {tool_name} executed successfully with result: {mcp_res.get('result', '')}")
+        else:
+            context.append(f"Tool {tool_name} failed with error: {mcp_res.get('error', 'Unknown error')}")
+        res = invoke(init_prompt, "".join(context))
+        if (res.text is None):
+            continue
+        text, add_tools = split_tools_from_text(res.text)
+        print(f"Response (text): {text}\nResponse (tools): {add_tools}\n")
+        tools.extend(add_tools)
+        print(f"Current context: {context}\n")

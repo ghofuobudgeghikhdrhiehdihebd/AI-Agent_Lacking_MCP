@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 main = "agent_no_mcp.mainloop:main"
+rebuild_prompt = "agent_no_mcp.build_sys_prompt:build_sys_prompt"
 
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]

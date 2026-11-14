@@ -23,25 +23,26 @@ def split_tools_from_text(text: str) -> tuple[str, list[dict[str, str]]]:
     Splits output into a tuple of (text, list of tool calls)
     """
     tool_calls = []
-    tool_call_pos: list[tuple[int, int]] = []
-    # Find all JSON objects in the text
-    decoder = json.JSONDecoder()
-    pos = 0
-    while pos < len(text):
-        match = re.search(r'\{', text[pos:])
-        if not match:
-            break
-        start = pos + match.start()
+    json_start_pattern = "```json\n"
+    json_end_pattern = "```"
+    json_starts = [m.start() for m in re.finditer(json_start_pattern, text)]
+    print(f"json_starts: {json_starts}")
+    json_ends = []
+    for start in json_starts:
+        # find the next valid end pattern
+        end = text.find(json_end_pattern, start+len(json_start_pattern))
+        if end != -1:
+            json_ends.append(end)
+    print(f"json_ends: {json_ends}")
+    for i in range(min(len(json_starts), len(json_ends))):
         try:
-            obj, end = decoder.raw_decode(text[start:])
-            tool_calls.append(obj)
-            tool_call_pos.append((start, start + end))
-            pos = start + end
+            tool_call = json.loads(text[(json_starts[i]+len(json_start_pattern)):json_ends[i]])
+            tool_calls.append(tool_call)
         except json.JSONDecodeError:
-            pos = start + 1
-    # remove calls from text
-    for start, end in reversed(tool_call_pos):
-        text = text[:start] + text[end:]
+            continue
+    # Remove the JSON blocks from the text
+    for i in reversed(range(min(len(json_starts), len(json_ends)))):
+        text = text[:json_starts[i]] + text[(json_ends[i]+len(json_end_pattern)):]
     return text, tool_calls
 
 def invoke(prompt: str, context: str):
@@ -52,7 +53,7 @@ def invoke(prompt: str, context: str):
         f"""
         User prompt:\n
         {prompt}\n
-        Relevant context:\n
+        Relevant context (previous tool call results):\n
         {context}
         """
     )
