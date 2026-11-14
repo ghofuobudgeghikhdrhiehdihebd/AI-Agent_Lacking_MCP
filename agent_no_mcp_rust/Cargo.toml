@@ -3,6 +3,7 @@ name = "agent-no-mcp-rust"
 version = "0.1.0"
 edition = "2024"
 description = "Rust translation of the agent_no_mcp Python AI agent"
+default-run = "agent-no-mcp-rust"
 
 [dependencies]
 anyhow = "1.0"

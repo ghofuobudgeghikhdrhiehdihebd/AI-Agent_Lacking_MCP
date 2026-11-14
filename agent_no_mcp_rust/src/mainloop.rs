@@ -25,6 +25,19 @@ pub fn run(init_prompt: &str) -> Result<()> {
         return Ok(());
     };
     let (text, mut tools) = split_tools_from_text(&initial_text);
+    // Prints tool calls to terminal (debug)
+    // for tool in &tools {
+    //     let tool_name = tool
+    //         .get("tool")
+    //         .and_then(Value::as_str)
+    //         .unwrap_or("INVALID_TOOL");
+    //     let tool_params = tool
+    //         .get("params")
+    //         .filter(|value| value.is_object())
+    //         .cloned()
+    //         .unwrap_or_else(|| Value::Object(Map::new()));
+    //     println!("Tool call: {tool_name} with params: {tool_params}");
+    // }
     println!("Response (text): {text}\nResponse (tools): {tools:?}\n");
 
     while !tools.is_empty() {
