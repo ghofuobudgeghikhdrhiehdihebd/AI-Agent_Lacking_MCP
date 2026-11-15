@@ -5,6 +5,8 @@ fn main() {
     let mut uart = ArduinoSerial::new().expect("Failed to initialize Arduino UART");
     uart.send_text("Test message")
         .expect("Failed to send text over UART");
+    uart.send_msgpack_frame(&"{'test': 'value'}")
+        .expect("Failed to send MessagePack over UART");
 
     println!("Waiting up to 5 seconds for an unframed UTF-8 serial response...");
     loop {
