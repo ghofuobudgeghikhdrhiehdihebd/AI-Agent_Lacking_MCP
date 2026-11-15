@@ -1,86 +1,81 @@
-use std::sync::{LazyLock, Mutex};
 use serde_json::Value;
-use crate::serial_utils;
+use std::collections::HashMap;
 
-static AIRLOCK: LazyLock<Mutex<Box<dyn serialport::SerialPort>>> = LazyLock::new(|| {
-    Mutex::new(
-        serial_utils::init_airlock()
-            .expect("Failed to initialize airlock"),
-    )
-});
+use crate::UART_serial::send_tool_call;
+use crate::tool_types::ToolResponse;
 
-/// The result returned to the agent after attempting an MCP tool call.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct McpResponse {
-    pub status: String,
-    pub result: Option<String>,
-    pub error: Option<String>
+pub struct MCPServer {
+    awaiting_response: bool,
+    tool_awaiting_response: Option<String>,
+    params_awaiting_response: Option<HashMap<String, Value>>,
+    response: Option<ToolResponse>,
 }
 
-impl McpResponse {
-    fn success(result: impl Into<String>) -> Self {
-        Self {
-            status: "success".to_owned(),
-            result: Some(result.into()),
-            error: None
+impl MCPServer {
+    pub fn new() -> Self {
+        MCPServer {
+            awaiting_response: false,
+            tool_awaiting_response: None,
+            params_awaiting_response: None,
+            response: None,
         }
     }
 
-    fn failed(error: impl Into<String>) -> Self {
-        Self {
-            status: "failed".to_owned(),
-            result: None,
-            error: Some(error.into())
+    /// Sends a tool call to the MCP server via UART serial, sets state to awaiting
+    fn send_tool_call(
+        &mut self,
+        tool: &str,
+        params: &HashMap<String, Value>,
+    ) -> Result<(), String> {
+        if self.awaiting_response {
+            return Err("Already awaiting a response from the MCP server".to_string());
         }
-    }
-}
-
-/// Validates the tool-call envelope and reports that no MCP server exists yet.
-///
-/// No tool is executed locally. A future implementation can replace this
-/// transport boundary with an MCP client without changing the agent loop.
-pub fn mcp_server(tool: &str, params: &Value) -> McpResponse {
-    if tool.trim().is_empty() || !params.is_object() {
-        return McpResponse::failed("Invalid input types");
-    }
-    let mut airlock = AIRLOCK.lock().expect("Airlock mutex is poisoned");
-    // Send a serial request
-    serial_utils::send_str(&mut **airlock, &format!("Tool: {}\nParams: {}\n", tool, params))
-        .expect("Failed to send request to airlock");
-    // Get a serial response
-    loop {
-        match serial_utils::read_line(&mut **airlock) {
-            Ok(line) => {
-                if !line.trim().is_empty() {
-                    return McpResponse::success(line);
+        self.awaiting_response = true;
+        self.tool_awaiting_response = Some(tool.to_owned());
+        self.params_awaiting_response = Some(params.to_owned());
+        self.response = None;
+        send_tool_call(
+            &serde_json::to_string(&serde_json::json!({
+                "type": "tool_call",
+                "data": {
+                    "tool": tool,
+                    "params": params
                 }
-            }
-            Err(e) => {
-                eprintln!("Error reading from airlock: {}", e);
-                return McpResponse::failed("Error reading from airlock");
-            }
+            }))
+            .unwrap()
+            .as_str(),
+        )
+        .map_err(|e| format!("Failed to send tool call: {}", e))?;
+        // format: "{“type”: “tool_call”, “data”: {“tool”: (tool name), “params”: (tool params as JSON object)}}"
+        // todo: send tool call to the actual MCP server via GPIO
+        Ok(())
+    }
+
+    /// Receives a response from the MCP server and returns it to the agent.
+    /// Note: This will consume the response object. That should be fine.
+    pub fn receive_response(&mut self, response: ToolResponse) -> Result<(), String> {
+        if !self.awaiting_response {
+            return Err("Not awaiting a response from the MCP server".to_string());
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::mcp_server;
-    use serde_json::json;
-
-    #[test]
-    fn does_not_execute_tools_before_mcp_is_implemented() {
-        let response = mcp_server("read", &json!({"path": "/tmp/example"}));
-        assert_eq!(response.status, "failed");
-        assert_eq!(
-            response.error.as_deref(),
-            Some("MCP server is not implemented")
-        );
+        self.awaiting_response = false;
+        self.tool_awaiting_response = None;
+        self.params_awaiting_response = None;
+        self.response = Some(response);
+        Ok(())
     }
 
-    #[test]
-    fn rejects_non_object_parameters() {
-        let response = mcp_server("read", &json!("not an object"));
-        assert_eq!(response.error.as_deref(), Some("Invalid input types"));
+    /// Calls a tool via the MCP server, awaits the response, and returns it
+    pub fn call_tool(
+        &mut self,
+        tool: &str,
+        params: &HashMap<String, Value>,
+    ) -> Result<ToolResponse, String> {
+        self.send_tool_call(tool, params)?;
+        while self.awaiting_response {
+            // Wait
+            // Someone else will call receive_response()
+        }
+        let response = self.response.take().unwrap();
+        return Ok(response);
     }
 }
