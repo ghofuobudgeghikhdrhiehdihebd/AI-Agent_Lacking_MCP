@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use reqwest::blocking::Client;
+use std::time::Duration;
 use serde_json::{Value, json};
 use std::env;
 
@@ -27,17 +28,21 @@ impl GeminiChat {
         dotenvy::dotenv().ok();
         let api_key = env::var("GEMINI_API_KEY").context("GEMINI_API_KEY is not set")?;
         let model = env::var("GEMINI_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
-        Ok(Self::new(api_key, model, system_prompt))
+        Ok(Self::new(api_key, model, system_prompt)?)
     }
 
-    pub fn new(api_key: String, model: String, system_prompt: String) -> Self {
-        Self {
-            client: Client::new(),
+    pub fn new(api_key: String, model: String, system_prompt: String) -> Result<Self> {
+        Ok(Self {
+            client: Client::builder()
+                .timeout(Duration::from_secs(120))
+                .connect_timeout(Duration::from_secs(10))
+                .build()
+                .context("failed to build Gemini HTTP client")?,
             api_key,
             model,
             system_prompt,
             history: Vec::new(),
-        }
+        })
     }
 
     /// Sends the prompt and accumulated tool-result context to Gemini.

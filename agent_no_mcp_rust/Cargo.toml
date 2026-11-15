@@ -9,9 +9,12 @@ default-run = "agent-no-mcp-rust"
 anyhow = "1.0"
 dotenvy = "0.15"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
+rmp-serde = "1.3.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml = "0.9"
+serialport = { version = "4.10.1", default-features = false }
+tiny_http = "0.12.0"
 
 [dev-dependencies]
 tempfile = "3.0"

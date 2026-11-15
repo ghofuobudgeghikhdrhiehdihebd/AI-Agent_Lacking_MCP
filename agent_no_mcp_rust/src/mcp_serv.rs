@@ -1,11 +1,20 @@
+use std::sync::{LazyLock, Mutex};
 use serde_json::Value;
+use crate::serial_utils;
+
+static AIRLOCK: LazyLock<Mutex<Box<dyn serialport::SerialPort>>> = LazyLock::new(|| {
+    Mutex::new(
+        serial_utils::init_airlock()
+            .expect("Failed to initialize airlock"),
+    )
+});
 
 /// The result returned to the agent after attempting an MCP tool call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpResponse {
     pub status: String,
     pub result: Option<String>,
-    pub error: Option<String>,
+    pub error: Option<String>
 }
 
 impl McpResponse {
@@ -13,7 +22,7 @@ impl McpResponse {
         Self {
             status: "success".to_owned(),
             result: Some(result.into()),
-            error: None,
+            error: None
         }
     }
 
@@ -21,7 +30,7 @@ impl McpResponse {
         Self {
             status: "failed".to_owned(),
             result: None,
-            error: Some(error.into()),
+            error: Some(error.into())
         }
     }
 }
@@ -34,8 +43,24 @@ pub fn mcp_server(tool: &str, params: &Value) -> McpResponse {
     if tool.trim().is_empty() || !params.is_object() {
         return McpResponse::failed("Invalid input types");
     }
-
-    McpResponse::success("This is a dummy response, as the MCP server has not yet been implemented. Please ignore this.")
+    let mut airlock = AIRLOCK.lock().expect("Airlock mutex is poisoned");
+    // Send a serial request
+    serial_utils::send_str(&mut **airlock, &format!("Tool: {}\nParams: {}\n", tool, params))
+        .expect("Failed to send request to airlock");
+    // Get a serial response
+    loop {
+        match serial_utils::read_line(&mut **airlock) {
+            Ok(line) => {
+                if !line.trim().is_empty() {
+                    return McpResponse::success(line);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error reading from airlock: {}", e);
+                return McpResponse::failed("Error reading from airlock");
+            }
+        }
+    }
 }
 
 #[cfg(test)]

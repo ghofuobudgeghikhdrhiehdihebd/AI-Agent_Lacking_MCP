@@ -1,29 +1,32 @@
-use crate::llm_prov::{GeminiChat, split_tools_from_text};
-use crate::load_sys_prompt::get_sys_prompt;
-use crate::mcp_serv::mcp_server;
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
 use std::env;
 
+use crate::llm_prov::{GeminiChat, split_tools_from_text};
+use crate::load_sys_prompt::get_sys_prompt;
+use crate::mcp_serv::mcp_server;
+
 /// Runs the agent using the first command-line argument as its user prompt.
-pub fn main_from_env() -> Result<()> {
+pub fn main_from_env() -> Result<String> {
     let prompt = env::args()
         .nth(1)
         .context("usage: agent-no-mcp-rust <prompt>")?;
     run(&prompt)
 }
 
-/// Runs the tool-calling loop. MCP calls intentionally return failures until
+/// Runs the tool-calling loop. MCP calls intentionally return a dummy response until
 /// an actual MCP server is connected.
-pub fn run(init_prompt: &str) -> Result<()> {
+pub fn run(init_prompt: &str) -> Result<String> {
     let mut chat = GeminiChat::from_env(get_sys_prompt()?)?;
     let mut context = Vec::new();
+    let mut response = String::new();
 
     let initial_context: String = context.concat();
     let initial_response = chat.invoke(init_prompt, &initial_context)?;
     let Some(initial_text) = initial_response.text else {
-        return Ok(());
+        return Ok("".to_owned());
     };
+    response.push_str(&initial_text);
     let (text, mut tools) = split_tools_from_text(&initial_text);
     // Prints tool calls to terminal (debug)
     // for tool in &tools {
@@ -68,15 +71,16 @@ pub fn run(init_prompt: &str) -> Result<()> {
         }
 
         let current_context: String = context.concat();
-        let response = chat.invoke(init_prompt, &current_context)?;
-        let Some(response_text) = response.text else {
+        let new_response = chat.invoke(init_prompt, &current_context)?;
+        let Some(response_text) = new_response.text else {
             continue;
         };
         let (text, additional_tools) = split_tools_from_text(&response_text);
         println!("Response (text): {text}\nResponse (tools): {additional_tools:?}\n");
         tools.extend(additional_tools);
         println!("Current context: {context:?}\n");
+        response.push_str(&text);
     }
 
-    Ok(())
+    Ok(response)
 }

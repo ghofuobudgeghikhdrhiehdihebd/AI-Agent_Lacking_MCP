@@ -7,7 +7,13 @@ shell: Executes a command and returns its output (if no errors) or error message
 </tools>
 
 <rules>
-- Tools must be passed as valid JSON strings, wrapped in JSON markdown formatting.
+- Tools must be passed as valid JSON strings, wrapped in JSON markdown formatting, with the following format:
+{
+  "tool": (tool name),
+  "params": {
+    (params)
+  }
+}
 - Tool arguments must be passed exactly as specified at the end of this file. Any other parameter names will cause a tool failure.
 - Any argument with "mandatory: false" under it is optional, while arguments with "mandatory: true" under them are mandatory.
 - Use shell for file operations like ls, cd, find
