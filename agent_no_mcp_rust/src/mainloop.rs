@@ -1,25 +1,16 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use serde_json::{Map, Value};
-use std::env;
 
 use crate::llm_prov::{GeminiChat, StreamTurn};
 use crate::load_sys_prompt::get_sys_prompt;
 use crate::mcp_serv::MCPServer;
-
-/// Runs the agent using the first command-line argument as its user prompt.
-pub fn main_from_env() -> Result<String> {
-    let prompt = env::args()
-        .nth(1)
-        .context("usage: agent-no-mcp-rust <prompt>")?;
-    run(&prompt)
-}
 
 /// Boundary for a synchronous MCP/UART executor.
 ///
 /// Gemini streaming is stopped before this call is made. A real executor can
 /// block until its UART/MCP response arrives, then return the JSON result.
 pub trait ToolExecutor {
-    /// Sends user prompts and assistant text as UTF-8 UART frames.
+    /// Sends assistant text as unframed UTF-8 over USB serial.
     fn send_text(&mut self, text: &str) -> Result<()>;
     /// Sends a MessagePack tool call and returns its MessagePack-decoded result.
     fn call(&mut self, tool: &str, params: &Map<String, Value>) -> Result<Value>;
@@ -42,7 +33,6 @@ impl ToolExecutor for MCPServer {
 pub fn run_with_executor(init_prompt: &str, executor: &mut dyn ToolExecutor) -> Result<String> {
     let mut chat = GeminiChat::from_env(get_sys_prompt()?)?;
     let mut response = String::new();
-    executor.send_text(init_prompt)?;
     let mut turn = chat.start_turn(init_prompt)?;
 
     loop {

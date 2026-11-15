@@ -21,9 +21,19 @@ impl MCPServer {
         }
     }
 
-    /// Transmits UTF-8 prompt/model text without MessagePack serialization.
+    /// Receives one unframed UTF-8 prompt from the USB serial peer.
+    pub fn receive_prompt(
+        &mut self,
+        timeout: Duration,
+        idle_timeout: Duration,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let bytes = self.uart.receive_until_idle(timeout, idle_timeout)?;
+        Ok(String::from_utf8(bytes)?)
+    }
+
+    /// Transmits model text as unframed UTF-8 over USB serial.
     pub fn send_text(&mut self, text: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.uart.send_frame(text.as_bytes())
+        self.uart.send_text(text)
     }
 
     /// Sends a framed MessagePack tool call and waits for one framed MessagePack
