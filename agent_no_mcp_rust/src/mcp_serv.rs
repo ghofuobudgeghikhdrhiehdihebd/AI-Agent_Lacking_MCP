@@ -1,8 +1,8 @@
 use serde_json::{Map, Value};
 use std::time::Duration;
 
-use crate::tool_types::{ToolCall, ToolMessage, ToolResponse};
 use crate::serial_utils::ArduinoSerial;
+use crate::tool_types::{ToolCall, ToolMessage, ToolResponse};
 
 pub struct MCPServer {
     uart: ArduinoSerial,

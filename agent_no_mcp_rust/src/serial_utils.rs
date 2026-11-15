@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use serde::{Serialize, de::DeserializeOwned};
 
 pub const USB_SERIAL_PATH: &str = "/dev/ttyGS0";
-pub const USB_SERIAL_BAUD_RATE: u32 = 115_200;
+pub const USB_SERIAL_BAUD_RATE: u32 = 9600;
 pub const MAX_FRAME_LENGTH: usize = 1024 * 1024;
 
 const READ_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -59,6 +59,47 @@ impl ArduinoSerial {
         let mut data = std::mem::take(&mut self.pending_rx);
         data.extend(self.read_serial_chunk()?);
         Ok(data)
+    }
+
+    /// Receive one unframed serial message.
+    ///
+    /// This is intended for plain `pyserial.Serial.write()` traffic, where the
+    /// sender does not prepend the 4-byte length header required by
+    /// `receive_frame`. The first byte must arrive before `timeout`; after data
+    /// begins arriving, the message ends when no new bytes arrive for
+    /// `idle_timeout`.
+    ///
+    /// Raw serial has no inherent message boundaries. Use `receive_frame` for
+    /// protocol traffic that needs unambiguous message framing.
+    pub fn receive_until_idle(
+        &mut self,
+        timeout: Duration,
+        idle_timeout: Duration,
+    ) -> Result<Vec<u8>> {
+        if idle_timeout.is_zero() {
+            return Err("USB serial idle timeout must be greater than zero".into());
+        }
+
+        let deadline = Instant::now() + timeout;
+        let mut data = std::mem::take(&mut self.pending_rx);
+        let mut last_received_at = (!data.is_empty()).then(Instant::now);
+
+        loop {
+            let now = Instant::now();
+            if let Some(last_received_at) = last_received_at {
+                if now.duration_since(last_received_at) >= idle_timeout {
+                    return Ok(data);
+                }
+            } else if now >= deadline {
+                return Err(receive_timeout().into());
+            }
+
+            let chunk = self.read_serial_chunk()?;
+            if !chunk.is_empty() {
+                data.extend(chunk);
+                last_received_at = Some(Instant::now());
+            }
+        }
     }
 
     /// Wait until exactly `count` bytes have arrived.
