@@ -1,9 +1,10 @@
-use anyhow::{Context, Result};
-use serde_json::{Map, Value, json};
+use anyhow::{Context, Result, anyhow};
+use serde_json::{Map, Value};
 use std::env;
 
 use crate::llm_prov::{GeminiChat, StreamTurn};
 use crate::load_sys_prompt::get_sys_prompt;
+use crate::mcp_serv::MCPServer;
 
 /// Runs the agent using the first command-line argument as its user prompt.
 pub fn main_from_env() -> Result<String> {
@@ -18,18 +19,22 @@ pub fn main_from_env() -> Result<String> {
 /// Gemini streaming is stopped before this call is made. A real executor can
 /// block until its UART/MCP response arrives, then return the JSON result.
 pub trait ToolExecutor {
-    fn call(&mut self, tool: &str, params: &Map<String, Value>) -> Value;
+    /// Sends user prompts and assistant text as UTF-8 UART frames.
+    fn send_text(&mut self, text: &str) -> Result<()>;
+    /// Sends a MessagePack tool call and returns its MessagePack-decoded result.
+    fn call(&mut self, tool: &str, params: &Map<String, Value>) -> Result<Value>;
 }
 
-/// Temporary behavior while the in-progress MCP/UART receiver is not connected.
-/// Returning a structured error avoids the busy wait in `MCPServer::call_tool`.
-struct UnavailableToolExecutor;
+impl ToolExecutor for MCPServer {
+    fn send_text(&mut self, text: &str) -> Result<()> {
+        self.send_text(text)
+            .map_err(|error| anyhow!("failed to send UTF-8 text over RouterBridge UART: {error}"))
+    }
 
-impl ToolExecutor for UnavailableToolExecutor {
-    fn call(&mut self, tool: &str, _params: &Map<String, Value>) -> Value {
-        json!({
-            "error": format!("Tool executor is not connected; {tool:?} was not executed"),
-        })
+    fn call(&mut self, tool: &str, params: &Map<String, Value>) -> Result<Value> {
+        self.call_tool(tool, params)
+            .map_err(|error| anyhow!("RouterBridge tool transport failed: {error}"))
+            .map(|response| response.into_gemini_result())
     }
 }
 
@@ -37,31 +42,44 @@ impl ToolExecutor for UnavailableToolExecutor {
 pub fn run_with_executor(init_prompt: &str, executor: &mut dyn ToolExecutor) -> Result<String> {
     let mut chat = GeminiChat::from_env(get_sys_prompt()?)?;
     let mut response = String::new();
+    executor.send_text(init_prompt)?;
     let mut turn = chat.start_turn(init_prompt)?;
 
     loop {
         match turn {
             StreamTurn::Complete { text } => {
                 response.push_str(&text);
+                send_text_over_uart(executor, &text)?;
                 return Ok(response);
             }
             StreamTurn::ToolCall { text, call } => {
                 response.push_str(&text);
-                let tool_result = executor.call(&call.name, &call.args);
+                send_text_over_uart(executor, &text)?;
+                let tool_result = executor.call(&call.name, &call.args)?;
                 turn = chat.continue_after_tool(&call, tool_result)?;
             }
         }
     }
 }
 
-/// Runs the agent with the current temporary MCP/UART boundary.
+fn send_text_over_uart(executor: &mut dyn ToolExecutor, text: &str) -> Result<()> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    executor.send_text(text)
+}
+
+/// Runs the agent through the RouterBridge UART transport.
 pub fn run(init_prompt: &str) -> Result<String> {
-    run_with_executor(init_prompt, &mut UnavailableToolExecutor)
+    let mut mcp_server = MCPServer::new()
+        .map_err(|error| anyhow!("failed to connect to Arduino RouterBridge: {error}"))?;
+    run_with_executor(init_prompt, &mut mcp_server)
 }
 
 #[cfg(test)]
 mod tests {
     use super::ToolExecutor;
+    use anyhow::Result;
     use serde_json::{Map, Value, json};
 
     struct RecordingExecutor {
@@ -69,9 +87,13 @@ mod tests {
     }
 
     impl ToolExecutor for RecordingExecutor {
-        fn call(&mut self, tool: &str, params: &Map<String, Value>) -> Value {
+        fn send_text(&mut self, _text: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn call(&mut self, tool: &str, params: &Map<String, Value>) -> Result<Value> {
             self.calls.push((tool.to_owned(), params.clone()));
-            json!({"result": "ok"})
+            Ok(json!({"result": "ok"}))
         }
     }
 
@@ -82,7 +104,7 @@ mod tests {
             "read",
             &Map::from_iter([(String::from("path"), json!("/tmp/a"))]),
         );
-        assert_eq!(result, json!({"result": "ok"}));
+        assert_eq!(result.unwrap(), json!({"result": "ok"}));
         assert_eq!(executor.calls[0].0, "read");
         assert_eq!(executor.calls[0].1.get("path"), Some(&json!("/tmp/a")));
     }
