@@ -18,7 +18,7 @@ pub trait ToolExecutor {
 
 impl ToolExecutor for MCPServer {
     fn send_text(&mut self, text: &str) -> Result<()> {
-        self.send_text(text)
+        self.send_text(&format!("{text}\n"))
             .map_err(|error| anyhow!("failed to send UTF-8 text over USB serial: {error}"))
     }
 
@@ -56,6 +56,7 @@ fn send_text_over_uart(executor: &mut dyn ToolExecutor, text: &str) -> Result<()
     if text.is_empty() {
         return Ok(());
     }
+    println!("Sending text over USB serial: {text}");
     executor.send_text(text)
 }
 

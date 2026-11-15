@@ -19,6 +19,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
+        println!("Received prompt: {prompt}");
+
         if let Err(error) = run_with_executor(&prompt, &mut serial_server) {
             eprintln!("agent request failed: {error}");
             serial_server.send_text(&format!("Error: {error}\n"))?;
