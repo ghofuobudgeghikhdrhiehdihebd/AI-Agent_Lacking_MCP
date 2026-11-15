@@ -9,4 +9,4 @@ pub mod load_sys_prompt;
 pub mod mainloop;
 pub mod mcp_serv;
 pub mod tool_types;
-pub mod uart_utils;
+pub mod serial_utils;

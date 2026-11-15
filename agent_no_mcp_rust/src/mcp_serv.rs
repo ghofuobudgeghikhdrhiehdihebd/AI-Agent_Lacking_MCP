@@ -2,19 +2,19 @@ use serde_json::{Map, Value};
 use std::time::Duration;
 
 use crate::tool_types::{ToolCall, ToolMessage, ToolResponse};
-use crate::uart_utils::ArduinoUart;
+use crate::serial_utils::ArduinoSerial;
 
 pub struct MCPServer {
-    uart: ArduinoUart,
+    uart: ArduinoSerial,
     tool_timeout: Duration,
 }
 
 impl MCPServer {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::with_uart(ArduinoUart::new()?))
+        Ok(Self::with_uart(ArduinoSerial::new()?))
     }
 
-    pub fn with_uart(uart: ArduinoUart) -> Self {
+    pub fn with_uart(uart: ArduinoSerial) -> Self {
         Self {
             uart,
             tool_timeout: Duration::from_secs(30),
@@ -27,7 +27,7 @@ impl MCPServer {
     }
 
     /// Sends a framed MessagePack tool call and waits for one framed MessagePack
-    /// tool result returned by RouterBridge `uart_read`.
+    /// tool result returned by the board over USB serial.
     pub fn call_tool(
         &mut self,
         tool: &str,

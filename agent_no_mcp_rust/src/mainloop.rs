@@ -28,12 +28,12 @@ pub trait ToolExecutor {
 impl ToolExecutor for MCPServer {
     fn send_text(&mut self, text: &str) -> Result<()> {
         self.send_text(text)
-            .map_err(|error| anyhow!("failed to send UTF-8 text over RouterBridge UART: {error}"))
+            .map_err(|error| anyhow!("failed to send UTF-8 text over USB serial: {error}"))
     }
 
     fn call(&mut self, tool: &str, params: &Map<String, Value>) -> Result<Value> {
         self.call_tool(tool, params)
-            .map_err(|error| anyhow!("RouterBridge tool transport failed: {error}"))
+            .map_err(|error| anyhow!("USB serial tool transport failed: {error}"))
             .map(|response| response.into_gemini_result())
     }
 }
@@ -69,10 +69,11 @@ fn send_text_over_uart(executor: &mut dyn ToolExecutor, text: &str) -> Result<()
     executor.send_text(text)
 }
 
-/// Runs the agent through the RouterBridge UART transport.
+/// Runs the agent through the Arduino USB serial transport.
 pub fn run(init_prompt: &str) -> Result<String> {
-    let mut mcp_server = MCPServer::new()
-        .map_err(|error| anyhow!("failed to connect to Arduino RouterBridge: {error}"))?;
+    let mut mcp_server = MCPServer::new().map_err(|error| {
+        anyhow!("failed to open Arduino USB serial device /dev/ttyGS0: {error}")
+    })?;
     run_with_executor(init_prompt, &mut mcp_server)
 }
 
